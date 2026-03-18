@@ -1,0 +1,186 @@
+# ============================================================
+# IMPORTACIONES
+# Cargamos las librerías necesarias para la app:
+# - streamlit: el framework que crea la interfaz web
+# - PIL (Pillow): para abrir y manipular imágenes
+# - numpy: para operaciones matemáticas (necesario en el filtro sepia)
+# ============================================================
+import streamlit as st
+from PIL import Image, ImageOps
+import numpy as np
+
+
+# ============================================================
+# CONFIGURACIÓN DE LA PÁGINA
+# Esto debe ir siempre al principio, antes de cualquier otro
+# elemento de Streamlit. Define el título de la pestaña del
+# navegador y el icono que aparece en dicha pestaña.
+# ============================================================
+st.set_page_config(page_title="Foto para Ana", page_icon="📸")
+
+
+# ============================================================
+# ESTILOS PERSONALIZADOS CON CSS
+# Streamlit permite inyectar CSS directamente en la app usando
+# st.markdown() con unsafe_allow_html=True.
+# Aquí personalizamos:
+# - .main: color de fondo de toda la página
+# - .stButton>button: botones con bordes redondeados y ancho completo
+# - h1: título principal en rojo y centrado
+# - .subtitle: clase personalizada para el subtítulo
+# ============================================================
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f0f2f6;   /* Fondo gris claro suave */
+    }
+    .stButton>button {
+        width: 100%;                 /* Botones ocupan todo el ancho */
+        border-radius: 20px;         /* Bordes redondeados */
+    }
+    h1 {
+        color: #ff4b4b;              /* Título en rojo coral */
+        text-align: center;          /* Centrado */
+    }
+    .subtitle {
+        text-align: center;
+        font-size: 1.2rem;
+        color: #555;                 /* Gris oscuro */
+        margin-bottom: 2rem;         /* Espacio inferior */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# ============================================================
+# CABECERA DE LA APP
+# st.title() muestra el título principal (equivale a un <h1>).
+# st.markdown() con HTML nos permite usar la clase CSS .subtitle
+# que definimos arriba para el subtítulo personalizado.
+# ============================================================
+st.title("📸 App de Fotos de Ana")
+st.markdown(
+    "<p class='subtitle'>¡Captura un momento especial y dale un toque mágico! ✨</p>",
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# BARRA LATERAL (SIDEBAR) - SELECTOR DE FILTROS
+# st.sidebar permite colocar elementos en el panel lateral
+# que aparece a la izquierda de la app.
+# st.sidebar.selectbox() crea un menú desplegable para que
+# el usuario elija el filtro que quiere aplicar a su foto.
+# El valor elegido se guarda en la variable "filtro".
+# ============================================================
+st.sidebar.header("🎨 Ajustes de Imagen")
+filtro = st.sidebar.selectbox(
+    "Elige un efecto:",
+    ["Original", "Blanco y Negro", "Sepia", "Invertir Colores"]
+)
+
+
+# ============================================================
+# COMPONENTE DE CÁMARA
+# st.camera_input() activa la cámara del dispositivo (móvil o
+# webcam del PC) y muestra un botón para capturar la foto.
+# Si el usuario hace una foto, la variable "foto_capturada"
+# contiene los datos de la imagen. Si no, vale None.
+# ============================================================
+foto_capturada = st.camera_input("Hazte una foto")
+
+
+# ============================================================
+# PROCESAMIENTO DE LA IMAGEN (solo si hay foto capturada)
+# Toda esta lógica se ejecuta únicamente cuando el usuario
+# ha pulsado el botón de captura y "foto_capturada" no es None.
+# ============================================================
+if foto_capturada:
+
+    # Convertimos los datos capturados en un objeto imagen de PIL
+    # que podemos manipular (redimensionar, filtrar, etc.)
+    img = Image.open(foto_capturada)
+
+    # ----------------------------------------------------------
+    # APLICACIÓN DE FILTROS
+    # Según lo que el usuario haya elegido en el selectbox,
+    # aplicamos una transformación diferente a la imagen.
+    # ----------------------------------------------------------
+
+    if filtro == "Blanco y Negro":
+        # ImageOps.grayscale() convierte la imagen a escala de grises
+        # eliminando toda la información de color (RGB → un solo canal)
+        img = ImageOps.grayscale(img)
+
+    elif filtro == "Invertir Colores":
+        # ImageOps.invert() invierte cada píxel (255 - valor_original)
+        # Primero convertimos a RGB para asegurarnos de que no hay
+        # canal alfa (transparencia) que causaría un error
+        img = ImageOps.invert(img.convert("RGB"))
+
+    elif filtro == "Sepia":
+        # El filtro sepia no existe en PIL de forma nativa,
+        # así que lo calculamos manualmente con NumPy.
+
+        # Paso 1: Convertimos la imagen a un array de números (matriz)
+        # Cada píxel tiene 3 valores: R (rojo), G (verde), B (azul)
+        sepia_data = np.array(img.convert("RGB"))
+
+        # Paso 2: Definimos la "matriz de transformación sepia"
+        # Estos 9 valores son los coeficientes estándar del efecto sepia.
+        # Cada canal de salida (R, G, B) es una mezcla ponderada
+        # de los tres canales de entrada originales.
+        t = [0.393, 0.769, 0.189,   # Nuevo R = 0.393*R + 0.769*G + 0.189*B
+             0.349, 0.686, 0.168,   # Nuevo G = 0.349*R + 0.686*G + 0.168*B
+             0.272, 0.534, 0.131]   # Nuevo B = 0.272*R + 0.534*G + 0.131*B
+
+        # Paso 3: Aplicamos la transformación multiplicando la matriz
+        # de píxeles por la matriz de coeficientes (producto punto)
+        new_img = sepia_data.dot(np.array(t).reshape(3, 3).T)
+
+        # Paso 4: Normalizamos los valores al rango [0, 1]
+        # para evitar que algún píxel supere el valor máximo 255
+        new_img /= new_img.max()
+
+        # Paso 5: Volvemos a convertir al rango [0, 255] como enteros
+        # y creamos de nuevo un objeto imagen PIL
+        img = Image.fromarray((new_img * 255).astype(np.uint8))
+
+    # ----------------------------------------------------------
+    # MOSTRAR RESULTADO EN PANTALLA
+    # st.success() muestra un mensaje verde de confirmación.
+    # st.image() renderiza la imagen procesada en la app,
+    # con un pie de foto que indica el filtro aplicado.
+    # use_container_width=True hace que ocupe todo el ancho disponible.
+    # ----------------------------------------------------------
+    st.success("¡Foto capturada con éxito! 🎉")
+    st.image(img, caption=f"Versión: {filtro}", use_container_width=True)
+
+    # ----------------------------------------------------------
+    # BOTÓN DE DESCARGA
+    # st.download_button() genera un botón que permite al usuario
+    # descargar el archivo directamente desde el navegador.
+    # Nota: descarga la foto ORIGINAL (sin filtro aplicado),
+    # ya que "foto_capturada" contiene los datos originales.
+    # ----------------------------------------------------------
+    st.download_button(
+        label="💾 Descargar foto para Ana",
+        data=foto_capturada,       # Datos de la imagen a descargar
+        file_name="foto_ana.png",  # Nombre del archivo descargado
+        mime="image/png"           # Tipo de archivo (formato PNG)
+    )
+
+else:
+    # Si todavía no se ha capturado ninguna foto, mostramos
+    # un mensaje informativo con st.info() (recuadro azul)
+    st.info("👆 Pulsa el botón de arriba para activar la cámara.")
+
+
+# ============================================================
+# PIE DE PÁGINA
+# st.markdown("---") dibuja una línea horizontal separadora.
+# st.caption() muestra texto pequeño y gris, ideal para
+# créditos o notas al pie.
+# ============================================================
+st.markdown("---")
+st.caption("Hecho con ❤️ para Ana")
